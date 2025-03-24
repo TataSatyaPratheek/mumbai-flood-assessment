@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Script to download and prepare infrastructure data for Mumbai using OSM data.
+Script to download and prepare infrastructure data for Mumbai using OpenStreetMap.
 """
 
 import os
@@ -13,166 +13,313 @@ import geopandas as gpd
 from pathlib import Path
 import time
 from shapely.geometry import LineString, Polygon, Point
+import requests
+import zipfile
+import tempfile
 
 # Add the project root directory to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-def create_synthetic_roads(output_dir):
-    """Create synthetic road network."""
+def download_osm_infrastructure(output_dir):
+    """Download Mumbai infrastructure data from OpenStreetMap using OSMnx."""
     try:
-        print("Creating synthetic road network...")
+        import osmnx as ox
+        print("Downloading Mumbai infrastructure data from OpenStreetMap...")
         
-        # Mumbai bounds
-        xmin, ymin, xmax, ymax = 72.75, 18.85, 73.05, 19.25
+        # Get Mumbai boundary to limit the data extraction
+        mumbai_boundary_file = Path("data/raw/boundaries/mumbai_boundary.shp")
         
-        # Create a grid of roads
-        roads = []
-        
-        # Horizontal roads
-        for y in np.linspace(ymin, ymax, 10):
-            road = LineString([(xmin, y), (xmax, y)])
-            roads.append({
-                'geometry': road,
-                'highway': 'residential',
-                'name': f'EW Road {y:.4f}',
-                'osm_id': f'synth_{int(time.time())}_{len(roads)}'
-            })
-        
-        # Vertical roads
-        for x in np.linspace(xmin, xmax, 10):
-            road = LineString([(x, ymin), (x, ymax)])
-            roads.append({
-                'geometry': road,
-                'highway': 'residential',
-                'name': f'NS Road {x:.4f}',
-                'osm_id': f'synth_{int(time.time())}_{len(roads)}'
-            })
-        
-        # Create GeoDataFrame
-        roads_gdf = gpd.GeoDataFrame(roads, crs="EPSG:4326")
-        
-        # Save to file
-        output_file = output_dir / "mumbai_roads.shp"
-        roads_gdf.to_file(output_file)
-        print(f"Created synthetic road network and saved to {output_file}")
-    except Exception as e:
-        print(f"Error creating synthetic roads: {e}")
-
-def create_synthetic_water(output_dir):
-    """Create synthetic water bodies."""
-    try:
-        print("Creating synthetic water bodies...")
-        
-        # Mumbai bounds
-        xmin, ymin, xmax, ymax = 72.75, 18.85, 73.05, 19.25
-        
-        # Create some water bodies
-        water_bodies = []
-        
-        # A large body of water on the west side (representing the Arabian Sea)
-        west_coast = Polygon([
-            (xmin, ymin), (xmin + 0.05, ymin), 
-            (xmin + 0.03, ymax), (xmin, ymax)
-        ])
-        water_bodies.append({
-            'geometry': west_coast,
-            'natural': 'water',
-            'name': 'Arabian Sea',
-            'osm_id': f'synth_water_{int(time.time())}_1'
-        })
-        
-        # A few small lakes/ponds scattered throughout
-        for i in range(5):
-            x = np.random.uniform(xmin + 0.1, xmax - 0.02)
-            y = np.random.uniform(ymin + 0.05, ymax - 0.05)
-            size = np.random.uniform(0.005, 0.02)
-            lake = Polygon([
-                (x, y), (x + size, y),
-                (x + size, y + size), (x, y + size)
-            ])
-            water_bodies.append({
-                'geometry': lake,
-                'natural': 'water',
-                'name': f'Lake {i+1}',
-                'osm_id': f'synth_water_{int(time.time())}_{i+2}'
-            })
-        
-        # Create GeoDataFrame
-        water_gdf = gpd.GeoDataFrame(water_bodies, crs="EPSG:4326")
-        
-        # Save to file
-        output_file = output_dir / "mumbai_water.shp"
-        water_gdf.to_file(output_file)
-        print(f"Created synthetic water bodies and saved to {output_file}")
-    except Exception as e:
-        print(f"Error creating synthetic water bodies: {e}")
-
-def create_synthetic_critical(output_dir):
-    """Create synthetic critical infrastructure."""
-    try:
-        print("Creating synthetic critical infrastructure...")
-        
-        # Mumbai bounds
-        xmin, ymin, xmax, ymax = 72.75, 18.85, 73.05, 19.25
-        
-        # Create critical infrastructure
-        critical_infra = []
-        
-        # Types of facilities
-        facility_types = [
-            ('hospital', 'Hospital'),
-            ('fire_station', 'Fire Station'),
-            ('police', 'Police Station'),
-            ('school', 'School'),
-            ('university', 'University')
-        ]
-        
-        # Generate random points
-        for i in range(20):
-            x = np.random.uniform(xmin + 0.05, xmax - 0.05)
-            y = np.random.uniform(ymin + 0.05, ymax - 0.05)
-            point = Point(x, y)
+        if not mumbai_boundary_file.exists():
+            print("Mumbai boundary file not found. Falling back to bounding box.")
+            # Define Mumbai's bounding box - approximate
+            north, south, east, west = 19.28, 18.85, 73.05, 72.75
             
-            # Random facility type
-            facility_type, facility_name = facility_types[i % len(facility_types)]
+            # Download roads network
+            print("Downloading road network...")
+            roads = ox.graph_from_bbox(north, south, east, west, network_type='drive')
+            roads_gdf = ox.graph_to_gdfs(roads, nodes=False)
             
-            critical_infra.append({
-                'geometry': point,
-                'amenity': facility_type,
-                'name': f'{facility_name} {i+1}',
-                'osm_id': f'synth_crit_{int(time.time())}_{i+1}'
-            })
+            # Download buildings
+            print("Downloading buildings...")
+            buildings = ox.features.features_from_bbox(north, south, east, west, tags={'building': True})
+            
+            # Download water bodies
+            print("Downloading water bodies...")
+            water = ox.features.features_from_bbox(north, south, east, west, tags={'natural': 'water'})
+            
+            # Download landuse
+            print("Downloading landuse...")
+            landuse = ox.features.features_from_bbox(north, south, east, west, tags={'landuse': True})
+            
+            # Download critical infrastructure
+            print("Downloading critical infrastructure...")
+            hospitals = ox.features.features_from_bbox(north, south, east, west, tags={'amenity': 'hospital'})
+            schools = ox.features.features_from_bbox(north, south, east, west, tags={'amenity': 'school'})
+            fire_stations = ox.features.features_from_bbox(north, south, east, west, tags={'amenity': 'fire_station'})
+            police = ox.features.features_from_bbox(north, south, east, west, tags={'amenity': 'police'})
+            
+        else:
+            # Use the boundary shapefile to limit the data extraction
+            mumbai_boundary = gpd.read_file(mumbai_boundary_file)
+            polygon = mumbai_boundary.unary_union  # Get the combined geometry
+            
+            # Download roads network
+            print("Downloading road network using Mumbai boundary...")
+            roads = ox.graph_from_polygon(polygon, network_type='drive')
+            roads_gdf = ox.graph_to_gdfs(roads, nodes=False)
+            
+            # Download buildings
+            print("Downloading buildings...")
+            buildings = ox.features.features_from_polygon(polygon, tags={'building': True})
+            
+            # Download water bodies
+            print("Downloading water bodies...")
+            water = ox.features.features_from_polygon(polygon, tags={'natural': 'water'})
+            
+            # Download landuse
+            print("Downloading landuse...")
+            landuse = ox.features.features_from_polygon(polygon, tags={'landuse': True})
+            
+            # Download critical infrastructure
+            print("Downloading critical infrastructure...")
+            hospitals = ox.features.features_from_polygon(polygon, tags={'amenity': 'hospital'})
+            schools = ox.features.features_from_polygon(polygon, tags={'amenity': 'school'})
+            fire_stations = ox.features.features_from_polygon(polygon, tags={'amenity': 'fire_station'})
+            police = ox.features.features_from_polygon(polygon, tags={'amenity': 'police'})
         
-        # Create GeoDataFrame
-        critical_gdf = gpd.GeoDataFrame(critical_infra, crs="EPSG:4326")
+        # Save all datasets
+        roads_gdf.to_file(output_dir / "mumbai_roads.shp")
+        print(f"Saved {len(roads_gdf)} road segments to {output_dir / 'mumbai_roads.shp'}")
         
-        # Save to file
-        output_file = output_dir / "mumbai_critical.shp"
-        critical_gdf.to_file(output_file)
-        print(f"Created synthetic critical infrastructure and saved to {output_file}")
+        if len(buildings) > 0:
+            buildings.to_file(output_dir / "mumbai_buildings.shp")
+            print(f"Saved {len(buildings)} buildings to {output_dir / 'mumbai_buildings.shp'}")
+        
+        if len(water) > 0:
+            water.to_file(output_dir / "mumbai_water.shp")
+            print(f"Saved {len(water)} water bodies to {output_dir / 'mumbai_water.shp'}")
+        
+        if len(landuse) > 0:
+            landuse.to_file(output_dir / "mumbai_landuse.shp")
+            print(f"Saved {len(landuse)} landuse polygons to {output_dir / 'mumbai_landuse.shp'}")
+        
+        # Combine critical infrastructure
+        critical_infra = pd.concat([hospitals, schools, fire_stations, police])
+        if len(critical_infra) > 0:
+            critical_infra.to_file(output_dir / "mumbai_critical.shp")
+            print(f"Saved {len(critical_infra)} critical infrastructure points to {output_dir / 'mumbai_critical.shp'}")
+        
+        # Download drainage network (rivers, streams, canals)
+        print("Downloading drainage network...")
+        try:
+            drainage = ox.features.features_from_polygon(polygon if 'polygon' in locals() else None, 
+                                                     tags={'waterway': ['river', 'stream', 'canal', 'drain']})
+            if len(drainage) > 0:
+                drainage.to_file(output_dir / "mumbai_drainage.shp")
+                print(f"Saved {len(drainage)} drainage features to {output_dir / 'mumbai_drainage.shp'}")
+        except Exception as e:
+            print(f"Error downloading drainage network: {e}")
+        
+        return True
+    
+    except ImportError:
+        print("OSMnx package not available. Trying alternative download method...")
+        return download_osm_extract(output_dir)
+    
     except Exception as e:
-        print(f"Error creating synthetic critical infrastructure: {e}")
+        print(f"Error downloading from OSM using OSMnx: {e}")
+        return download_osm_extract(output_dir)
 
-def download_mumbai_infrastructure():
+def download_osm_extract(output_dir):
     """
-    Download Mumbai infrastructure data from OpenStreetMap.
+    Download Mumbai OSM extract using Overpass API or a pre-made extract.
     """
+    print("Downloading Mumbai OSM data using Overpass API...")
+    
+    try:
+        # First, try using the Overpass API
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        
+        # Create query to extract all infrastructure in Mumbai
+        # Define Mumbai's bounding box
+        bbox = "18.85,72.75,19.28,73.05"
+        
+        # Query for roads, buildings, and water bodies
+        query = f"""
+        [out:xml][timeout:300];
+        (
+            way["highway"]({bbox});
+            way["building"]({bbox});
+            way["natural"="water"]({bbox});
+            way["waterway"]({bbox});
+            node["amenity"="hospital"]({bbox});
+            node["amenity"="school"]({bbox});
+            node["amenity"="fire_station"]({bbox});
+            node["amenity"="police"]({bbox});
+            relation["natural"="water"]({bbox});
+        );
+        (._;>;);
+        out body;
+        """
+        
+        # Make the request
+        response = requests.post(overpass_url, data={"data": query})
+        
+        if response.status_code == 200:
+            # Save the OSM data
+            osm_file = output_dir / "mumbai_osm.xml"
+            with open(osm_file, "wb") as f:
+                f.write(response.content)
+            
+            print(f"Downloaded OSM data to {osm_file}")
+            
+            # Process with GDAL/OGR to convert to shapefiles
+            try:
+                import subprocess
+                
+                # Extract roads
+                subprocess.run([
+                    "ogr2ogr",
+                    "-f", "ESRI Shapefile",
+                    str(output_dir / "mumbai_roads.shp"),
+                    str(osm_file),
+                    "lines",
+                    "-where", "highway IS NOT NULL"
+                ])
+                
+                # Extract buildings
+                subprocess.run([
+                    "ogr2ogr",
+                    "-f", "ESRI Shapefile",
+                    str(output_dir / "mumbai_buildings.shp"),
+                    str(osm_file),
+                    "multipolygons",
+                    "-where", "building IS NOT NULL"
+                ])
+                
+                # Extract water
+                subprocess.run([
+                    "ogr2ogr",
+                    "-f", "ESRI Shapefile",
+                    str(output_dir / "mumbai_water.shp"),
+                    str(osm_file),
+                    "multipolygons",
+                    "-where", "natural='water'"
+                ])
+                
+                # Extract drainage
+                subprocess.run([
+                    "ogr2ogr",
+                    "-f", "ESRI Shapefile",
+                    str(output_dir / "mumbai_drainage.shp"),
+                    str(osm_file),
+                    "lines",
+                    "-where", "waterway IS NOT NULL"
+                ])
+                
+                print("Processed OSM data into shapefiles")
+                return True
+            
+            except (ImportError, subprocess.SubprocessError) as e:
+                print(f"Error processing OSM data: {e}")
+                print("Please install GDAL/OGR tools for processing.")
+                
+                # Even if processing fails, we still have the raw OSM data
+                return True
+        else:
+            print(f"Overpass API request failed with status code {response.status_code}")
+    
+    except Exception as e:
+        print(f"Error with Overpass API: {e}")
+    
+    # Fallback: Try to download from Geofabrik
+    print("Trying to download Mumbai extract from Geofabrik...")
+    try:
+        # Geofabrik provides regional extracts of OSM data
+        # India extract
+        geofabrik_url = "https://download.geofabrik.de/asia/india-latest.osm.pbf"
+        
+        # Download to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".osm.pbf", delete=False) as temp:
+            response = requests.get(geofabrik_url, stream=True)
+            if response.status_code == 200:
+                for chunk in response.iter_content(chunk_size=8192):
+                    temp.write(chunk)
+                temp_filename = temp.name
+                
+                print(f"Downloaded India OSM extract to {temp_filename}")
+                
+                # Process to extract Mumbai region
+                # This would require osmium or other tools
+                print("To extract Mumbai region from India extract:")
+                print("1. Install osmium tool: https://osmcode.org/osmium-tool/")
+                print("2. Run: osmium extract -b 72.75,18.85,73.05,19.28 india-latest.osm.pbf -o mumbai.osm.pbf")
+                print("3. Convert to shapefiles using ogr2ogr")
+                
+                # Cleanup
+                os.unlink(temp_filename)
+            else:
+                print(f"Failed to download from Geofabrik: {response.status_code}")
+                os.unlink(temp_filename)
+    
+    except Exception as e:
+        print(f"Error downloading from Geofabrik: {e}")
+    
+    # Final fallback: Provide instructions for manual download
+    print("\nAutomated downloads failed. Please download Mumbai infrastructure data manually:")
+    print("1. Visit https://www.openstreetmap.org/export")
+    print("2. Navigate to Mumbai and use the 'Export' feature")
+    print("3. Or use the HOT Export Tool: https://export.hotosm.org/")
+    print("4. Place downloaded files in: data/raw/infrastructure/")
+    
+    return False
+
+def download_mumbai_drainage_network():
+    """
+    Download additional drainage network data from government sources if available.
+    """
+    output_dir = Path("data/raw/infrastructure")
+    
+    # In a real implementation, you would check if official drainage data is available
+    # For example, from Mumbai Municipal Corporation (BMC)
+    
+    # List of potential sources
+    sources = [
+        "https://portal.mcgm.gov.in/",  # Mumbai Municipal Corporation
+        "https://mrsac.maharashtra.gov.in/",  # Maharashtra Remote Sensing Application Centre
+        "https://www.maharashtra.gov.in/",  # Maharashtra Government
+    ]
+    
+    print("Checking for official drainage network data...")
+    print("Note: Official drainage data usually requires direct contact with agencies")
+    print("Please check these sources for official data:")
+    for source in sources:
+        print(f"- {source}")
+    
+    # Check if OSM drainage data exists already
+    drainage_file = output_dir / "mumbai_drainage.shp"
+    if drainage_file.exists():
+        print(f"Using OpenStreetMap drainage data from {drainage_file}")
+        return True
+    
+    return False
+
+def main():
+    """Main function to prepare infrastructure data."""
     # Define the output path
     output_dir = Path("data/raw/infrastructure")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    print("Downloading Mumbai infrastructure data from OpenStreetMap...")
+    # Download primary infrastructure data
+    success = download_osm_infrastructure(output_dir)
     
-    # We'll use synthetic data instead of attempting to download from OSM
-    create_synthetic_roads(output_dir)
-    create_synthetic_water(output_dir)
-    create_synthetic_critical(output_dir)
+    # Download specific drainage network data
+    download_mumbai_drainage_network()
     
-    return True
-
-def main():
-    """Main function to prepare infrastructure data."""
-    download_mumbai_infrastructure()
+    if success:
+        print("Infrastructure data download complete.")
+    else:
+        print("Infrastructure data download encountered issues. Please check the logs.")
 
 if __name__ == "__main__":
     main()
