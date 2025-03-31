@@ -29,6 +29,7 @@ data/raw/
 data/processed/
 *.png
 
+
 # VS Code
 .vscode/
 
