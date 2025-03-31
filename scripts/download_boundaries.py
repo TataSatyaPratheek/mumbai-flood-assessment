@@ -2,7 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
+<<<<<<< HEAD
 Script to extract Mumbai administrative boundaries and integrate census data.
+=======
+Script to extract Mumbai administrative boundaries from GADM data.
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
 """
 
 import os
@@ -11,10 +15,16 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 import matplotlib.pyplot as plt
+<<<<<<< HEAD
 import numpy as np
 
 def extract_mumbai_boundaries():
     """Extract Mumbai boundaries from GADM data and integrate census data."""
+=======
+
+def extract_mumbai_boundaries():
+    """Extract Mumbai boundaries from GADM data at different levels."""
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
     # Define paths
     boundary_dir = Path("data/raw/boundaries")
     boundary_dir.mkdir(parents=True, exist_ok=True)
@@ -31,6 +41,7 @@ def extract_mumbai_boundaries():
         print("Please run the download_boundaries.py script first.")
         return False
     
+<<<<<<< HEAD
     # Load census data to identify required wards
     census_file = Path("mumbai-census.csv")
     if census_file.exists():
@@ -63,6 +74,27 @@ def extract_mumbai_boundaries():
         
         # Try with Bombay spelling
         bombay_criteria = maharashtra_districts['NAME_2'].str.contains('Bombay', case=False, na=False)
+=======
+    # Load GADM Level 2 data (districts)
+    print("Loading GADM district data...")
+    districts = gpd.read_file(gadm_level2)
+    
+    # Check Maharashtra districts
+    print("Available districts in Maharashtra:")
+    maharashtra_districts = districts[districts['NAME_1'] == 'Maharashtra']
+    print(maharashtra_districts['NAME_2'].unique())
+    
+    # Filter for Mumbai districts
+    mumbai_criteria = maharashtra_districts['NAME_2'].str.contains('Mumbai', case=False, na=False)
+    mumbai_districts = maharashtra_districts[mumbai_criteria]
+    
+    if len(mumbai_districts) == 0:
+        print("No Mumbai districts found with standard naming.")
+        print("Checking alternative spellings or names...")
+        
+        # Try with Bombay spelling or partial matches
+        bombay_criteria = maharashtra_districts['NAME_2'].str.contains('Bombay|मुंबई|Thane', case=False, na=False)
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
         mumbai_districts = maharashtra_districts[bombay_criteria]
         
         if len(mumbai_districts) == 0:
@@ -71,6 +103,7 @@ def extract_mumbai_boundaries():
             print("Please modify the script to select the correct district names.")
             return False
     
+<<<<<<< HEAD
     print(f"Found {len(mumbai_districts)} Mumbai-related districts:")
     print(mumbai_districts['NAME_2'].tolist())
     
@@ -83,11 +116,25 @@ def extract_mumbai_boundaries():
     
     if gadm_level3.exists():
         print("Loading GADM level 3 (sub-district) data...")
+=======
+    print(f"Found {len(mumbai_districts)} Mumbai-related districts")
+    print("Districts: ", mumbai_districts['NAME_2'].tolist())
+    
+    # Save Mumbai boundaries
+    mumbai_districts.to_file(mumbai_boundary_file)
+    print(f"Mumbai boundaries saved to {mumbai_boundary_file}")
+    
+    # Load GADM Level 3 data (sub-districts) if available
+    gadm_level3 = boundary_dir / "gadm41_IND_3.shp"
+    if gadm_level3.exists():
+        print("Loading GADM sub-district data...")
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
         subdistricts = gpd.read_file(gadm_level3)
         
         # Filter for Mumbai sub-districts
         mumbai_subdistricts = subdistricts[subdistricts['NAME_2'].isin(mumbai_districts['NAME_2'])]
         
+<<<<<<< HEAD
         print(f"Found {len(mumbai_subdistricts)} sub-districts within Mumbai districts:")
         if len(mumbai_subdistricts) > 0:
             print("Sub-districts: ", mumbai_subdistricts['NAME_3'].tolist())
@@ -256,6 +303,25 @@ def extract_mumbai_boundaries():
 
 def create_boundary_visualization(boundary_file, wards_file, census=None):
     """Create visualizations of Mumbai boundaries with census data integration."""
+=======
+        if len(mumbai_subdistricts) > 0:
+            print(f"Found {len(mumbai_subdistricts)} Mumbai sub-districts")
+            
+            # Save as ward-level boundaries if wards don't exist yet
+            if not mumbai_wards_file.exists():
+                # Add ward_id field
+                mumbai_subdistricts['ward_id'] = [f"W{i+1:02d}" for i in range(len(mumbai_subdistricts))]
+                mumbai_subdistricts.to_file(mumbai_wards_file)
+                print(f"Mumbai sub-districts saved as wards to {mumbai_wards_file}")
+    
+    # Create a simple visualization of the boundaries
+    create_boundary_visualization(mumbai_boundary_file, mumbai_wards_file)
+    
+    return True
+
+def create_boundary_visualization(boundary_file, wards_file):
+    """Create a simple visualization of Mumbai boundaries."""
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
     try:
         # Check if files exist
         if not boundary_file.exists():
@@ -272,6 +338,7 @@ def create_boundary_visualization(boundary_file, wards_file, census=None):
         # Plot Mumbai boundary
         fig, ax = plt.subplots(figsize=(12, 10))
         boundary.plot(ax=ax, color='lightgrey', edgecolor='black')
+<<<<<<< HEAD
         
         # Add district labels
         for idx, row in boundary.iterrows():
@@ -281,12 +348,17 @@ def create_boundary_visualization(boundary_file, wards_file, census=None):
         plt.title("Mumbai Administrative Boundary")
         plt.savefig(output_dir / "mumbai_boundary.png", dpi=300, bbox_inches='tight')
         plt.close()
+=======
+        plt.title("Mumbai Administrative Boundary")
+        plt.savefig(output_dir / "mumbai_boundary.png", dpi=300, bbox_inches='tight')
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
         
         # Plot wards if available
         if wards_file.exists():
             wards = gpd.read_file(wards_file)
             
             # Plot wards
+<<<<<<< HEAD
             fig, ax = plt.subplots(figsize=(15, 12))
             boundary.plot(ax=ax, color='lightgrey', edgecolor='black', alpha=0.5)
             wards.plot(ax=ax, column='ward_id', cmap='tab20', edgecolor='black', alpha=0.7)
@@ -299,10 +371,18 @@ def create_boundary_visualization(boundary_file, wards_file, census=None):
             plt.title("Mumbai Administrative Wards")
             plt.savefig(output_dir / "mumbai_wards.png", dpi=300, bbox_inches='tight')
             plt.close()
+=======
+            fig, ax = plt.subplots(figsize=(12, 10))
+            boundary.plot(ax=ax, color='lightgrey', edgecolor='black')
+            wards.plot(ax=ax, column='ward_id', cmap='tab20', edgecolor='black', alpha=0.7)
+            plt.title("Mumbai Administrative Wards")
+            plt.savefig(output_dir / "mumbai_wards.png", dpi=300, bbox_inches='tight')
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
             
             # Create ward statistics
             ward_stats = pd.DataFrame({
                 'ward_id': wards['ward_id'],
+<<<<<<< HEAD
                 'district': wards['NAME_2'] if 'NAME_2' in wards.columns else (
                            wards['district'] if 'district' in wards.columns else "Unknown"),
                 'area_sqkm': wards.to_crs(epsg=32643).area / 1_000_000  # Convert to sq km
@@ -412,13 +492,26 @@ def create_boundary_visualization(boundary_file, wards_file, census=None):
             stats_file = output_dir / "mumbai_ward_statistics.csv"
             ward_stats.to_csv(stats_file, index=False)
             print(f"Ward statistics saved to {stats_file}")
+=======
+                'name': wards['NAME_3'] if 'NAME_3' in wards.columns else wards['ward_id'],
+                'area_sqkm': wards.to_crs(epsg=32643).area / 1_000_000  # Convert to sq km
+            })
+            
+            # Save stats
+            ward_stats.to_csv(output_dir / "mumbai_ward_stats.csv", index=False)
+            print(f"Ward statistics saved to {output_dir / 'mumbai_ward_stats.csv'}")
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
         
         print(f"Visualizations saved to {output_dir}")
         
     except Exception as e:
+<<<<<<< HEAD
         print(f"Error creating visualizations: {e}")
         import traceback
         traceback.print_exc()
+=======
+        print(f"Error creating visualization: {e}")
+>>>>>>> ea4a7f5ba1542b222f3729eb06ca54c4eb22c654
         return False
 
 if __name__ == "__main__":
