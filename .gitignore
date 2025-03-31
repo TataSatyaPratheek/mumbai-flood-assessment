@@ -26,6 +26,8 @@ ENV/
 *.cpg
 *.qpj
 data/raw/
+data/processed/
+*.png
 
 # VS Code
 .vscode/
